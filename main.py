@@ -16,8 +16,7 @@ import boto3
 
 session = boto3.Session(aws_access_key_id='',
 aws_secret_access_key='',
- aws_session_token='')
-
+ aws_session_token=''
 s3 = session.resource('s3')
 
 class Profesor(BaseModel):
@@ -53,7 +52,7 @@ class AlumnoDB(Base):
 
 app = FastAPI()
 engine = create_engine(
-    "mysql+pymysql://admin:9999886410@database-1.cjijrujhklho.us-east-1.rds.amazonaws.com/sicei",echo=True
+    "mysql+pymysql://",echo=True
 )
 sessionMaker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 session = sessionMaker()
@@ -85,19 +84,22 @@ async def get_alumnos():
     return session.query(AlumnoDB).all()
 
 from fastapi import FastAPI, File, UploadFile
+import traceback
 
 @app.post("/alumnos/{id}/fotoPerfil")
-async def create_upload_file( id:int, file: UploadFile = File(...),):
+async def create_upload_file( id:int, foto: UploadFile = File(...)):
+    try:
+        contents = await foto.read() 
+        object = s3.Object('aws-sicei2', f'{id}.jpg')
+        result = object.put(Body= (contents), ACL='public-read')
+        print(result)
+        alumno = session.query(AlumnoDB).get(id)
+        alumno.fotoPerfilUrl = f"https://aws-sicei2.s3.amazonaws.com/{id}.jpg"
+        session.commit()
+        return {"fotoPerfilUrl": f"https://aws-sicei2.s3.amazonaws.com/{id}.jpg"}
+    except:
+        print(traceback.format_exc())
 
-    contents = await file.read() 
-    object = s3.Object('aws-sicei2', f'{id}.jpg')
-    result = object.put(Body= (contents), ACL='public-read')
-    print(result)
-    alumno = session.query(AlumnoDB).get(id)
-    alumno.fotoPerfilUrl = f"https://aws-sicei2.s3.amazonaws.com/{id}.jpg"
-    session.commit()
-    return {"filename": f"https://aws-sicei2.s3.amazonaws.com/{id}.jpg"}
-    
 @app.get("/alumnos/{id}")
 async def get_alumno(id:int):
 
@@ -111,9 +113,11 @@ async def get_alumno(id:int):
 
 @app.post("/alumnos", status_code=201)
 async def crear_alumno(alumno:Alumno):
-    session.add(AlumnoDB(nombres=alumno.nombres, apellidos=alumno.apellidos, matricula=alumno.matricula, promedio=alumno.promedio, fotoPerfilUrl=""))
+    alumnoDB = AlumnoDB(nombres=alumno.nombres, apellidos=alumno.apellidos, matricula=alumno.matricula, promedio=alumno.promedio, fotoPerfilUrl="")
+    session.add(alumnoDB)
     session.commit()
-    return alumno
+    print(alumnoDB.id)
+    return alumnoDB
 
 @app.put("/alumnos/{id}")
 async def actualizar_alumno(alumno:Alumno, id:int):
@@ -162,10 +166,11 @@ async def get_profesor(id:int):
 
 @app.post("/profesores", status_code=201)
 async def crear_profesor(profesor:Profesor):
-    session.add(ProfesorDB(nombres=profesor.nombres, apellidos=profesor.apellidos, 
-    numeroEmpleado=profesor.numeroEmpleado, horasClase = profesor.horasClase))
+    profesorDB = ProfesorDB(nombres=profesor.nombres, apellidos=profesor.apellidos,numeroEmpleado=profesor.numeroEmpleado, horasClase = profesor.horasClase)
+    session.add(profesorDB)
     session.commit()
-    return profesor
+    print(profesorDB.id)
+    return profesorDB
 
 @app.put("/profesores/{id}")
 async def actualizar_profesor(profesor:Profesor, id:int):
